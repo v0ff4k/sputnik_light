@@ -33,48 +33,23 @@ if (isset($_GET['get_playlist'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>radio Playlist</title>
+    <title>Radio Playlist</title>
     <link rel="stylesheet" href="//stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(to bottom, #c5d8b3 0%,#b0c49f 100%);
-            background-repeat: no-repeat;
-            background-size: cover; /* This will stretch the gradient to fill the entire screen */
-        }
-        #playlist * {
-            -webkit-transition: all .3s ease;
-            -moz-transition: all .3s ease;
-            -ms-transition: all .3s ease;
-            -o-transition: all .3s ease;
-            transition: all .3s ease;
-        }
+        .card img { width: 100%; height: auto; }
         .background {
             background-size: cover;
             width: 100%;
             height: 200px; /* Фиксированная высота */
-            -webkit-filter: blur(1px);
-            -moz-filter: blur(1px);
-            -o-filter: blur(1px);
-            -ms-filter: blur(1px);
             filter: blur(1px);
             display: block;
             overflow: hidden;
             position: relative;
         }
-        .card {
-            background-color: #ccc;
-        }
         .card:hover .background {
             filter: blur(5px);
             opacity: 0.3;
         }
-        .card img { width: 100%; height: auto; }
         .cover-layer {
             bottom: 0;
             left: 0;
@@ -91,41 +66,14 @@ if (isset($_GET['get_playlist'])) {
         audio {
             width: 90%;
         }
-        div#audio-player {
-            background:  linear-gradient(to bottom, #959595 0%,#0d0d0d 46%,#010101 50%,#0a0a0a 53%,#4e4e4e 76%,#383838 87%,#1b1b1b 100%);
-            color: #eee;
-            -webkit-transition: all .9s ease;
-            -moz-transition: all .9s ease;
-            -ms-transition: all .9s ease;
-            -o-transition: all .9s ease;
-            transition: all .9s ease;
-            opacity: 0.9;
-            margin-bottom: -9rem;
-        }
-        div#audio-player:hover{
-            opacity: 0.9;
-            margin-bottom: 0;
-        }
-        div#audio-player audio {
-            width: 100%;
-        }
         .hidden {
             display: none;
         }
-
         .card-body {
             padding: 10px;
         }
-        .card-body .btn {
-            font-size: 1.2rem;
-            padding: .1rem .4rem;
-        }
-        .card-body .btn.play {
-            font-size: 1.5rem;
-        }
         #controls {
             margin-top: 10px;
-            color: #eee;
         }
         #speed-slider, #volume-slider {
             width: 100%;
@@ -137,8 +85,7 @@ if (isset($_GET['get_playlist'])) {
         <button id="update-playlist" class="btn btn-primary mb-4">🔄</button>
         <div id="playlist" class="row"></div>
     </div>
-    <div id="audio-player" class="fixed-bottom bg-dark-grad p-2 hidden container">
-        <audio id="global-audio" src="" controls preload="none"></audio>
+    <div id="audio-player" class="fixed-bottom bg-dark p-2 hidden">
         <div id="controls">
             <label for="speed-slider">Скорость:</label>
             <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
@@ -147,9 +94,11 @@ if (isset($_GET['get_playlist'])) {
         </div>
     </div>
     <script src="//code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.core.min.js"></script>
     <script>
         $(document).ready(function() {
             let currentTrack = null;
+            let sound = null;
 
             $('#update-playlist').click(function() {
                 $.getJSON('index.php?get_playlist', function(data) {
@@ -175,14 +124,19 @@ if (isset($_GET['get_playlist'])) {
                         const trackUrl = $(this).data('src');
 
                         // Остановить предыдущий трек, если он воспроизводится
-                        if ($('#global-audio')[0].paused === false) {
-                            $('#global-audio')[0].pause();
-                            $('#global-audio')[0].currentTime = 0;
+                        if (sound && !sound.isPaused()) {
+                            sound.stop();
                         }
 
                         // Установить новый трек
-                        $('#global-audio').attr('src', trackUrl)[0].load();
-                        $('#global-audio')[0].play();
+                        sound = new Howl({
+                            src: [trackUrl],
+                            volume: parseFloat($('#volume-slider').val()),
+                            rate: parseFloat($('#speed-slider').val())
+                        });
+
+                        // Воспроизвести трек
+                        sound.play();
 
                         // Обновить текст кнопки
                         $('.play').text('▶️');
@@ -192,26 +146,29 @@ if (isset($_GET['get_playlist'])) {
                 });
             });
 
-            $('#global-audio')[0].addEventListener('ended', function() {
-                $('.play').text('▶️');
-                currentTrack = null;
-                $('#audio-player').addClass('hidden');
-            });
-
-            $('#global-audio')[0].addEventListener('error', function(event) {
-                alert('Ошибка при воспроизведении аудиофайла.');
-            });
-
             // Обработка слайдеров для скорости и громкости
             $('#speed-slider').on('input', function() {
                 const speed = parseFloat($(this).val());
-                $('#global-audio')[0].playbackRate = speed;
+                if (sound) {
+                    sound.rate(speed);
+                }
             });
 
             $('#volume-slider').on('input', function() {
                 const volume = parseFloat($(this).val());
-                $('#global-audio')[0].volume = volume;
+                if (sound) {
+                    sound.volume(volume);
+                }
             });
+
+            // Обработчик окончания воспроизведения
+            if (sound) {
+                sound.on('end', function() {
+                    $('.play').text('▶️');
+                    currentTrack = null;
+                    $('#audio-player').addClass('hidden');
+                });
+            }
         });
 
         function convertSecondsToHHMMSS(seconds) {

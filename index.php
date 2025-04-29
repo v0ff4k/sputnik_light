@@ -75,18 +75,24 @@ if (isset($_GET['get_playlist'])) {
             opacity: 0.3;
         }
         .card img { width: 100%; height: auto; }
+        .card-title { margin-bottom: 2rem; }
+        .card-title small { float: right; clear: both; }
+        .time_duration,
+        .time_start { font-family: Georgia, Times, "Times New Roman", serif}
+        .time_start { font-weight: bold; }
         .cover-layer {
             bottom: 0;
             left: 0;
             position: absolute;
             right: 0;
             top: 0;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            /*color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);*/
         }
         .card-text {
             max-height: 175px;
             overflow: auto;
+            clear: both;
         }
         audio {
             width: 90%;
@@ -99,12 +105,30 @@ if (isset($_GET['get_playlist'])) {
             -ms-transition: all .9s ease;
             -o-transition: all .9s ease;
             transition: all .9s ease;
-            opacity: 0.9;
-            margin-bottom: -9rem;
+            opacity: 1;
+            border-radius: 0;
+        }
+        div#audio-player #controls {
+            transition: all .3s ease;
+            color: #333;
+            height: 20px;
+            margin-bottom: -30px;
+            /*margin-bottom: -9rem;*/
+        }
+        div#audio-player #controls > * {
+            opacity: 0;
         }
         div#audio-player:hover{
-            opacity: 0.9;
+            border-radius: 10px 10px 0 0;
+        }
+        div#audio-player:hover #controls > * {
+            opacity: 1;
+        }
+        div#audio-player:hover #controls{
+            color: #eee;
+            height: auto;
             margin-bottom: 0;
+            opacity: 0.9;
         }
         div#audio-player audio {
             width: 100%;
@@ -138,18 +162,23 @@ if (isset($_GET['get_playlist'])) {
         <div id="playlist" class="row"></div>
     </div>
     <div id="audio-player" class="fixed-bottom bg-dark-grad p-2 hidden container">
-        <audio id="global-audio" src="" controls preload="none"></audio>
         <div id="controls">
             <label for="speed-slider">Скорость:</label>
             <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
             <label for="volume-slider">Громкость:</label>
-            <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="1">
+            <input type="range" id="volume-slider" min="0" max="1.3" step="0.1" value="0.3">
         </div>
+        <audio id="global-audio" src="" controls preload="none"></audio>
     </div>
     <script src="//code.jquery.com/jquery-3.5.1.min.js"></script>
     <script>
         $(document).ready(function() {
             let currentTrack = null;
+            let playbackRate = 1;
+            let volume = 0.3;
+
+            // set default val
+            document.getElementsByTagName("audio").volume = volume;
 
             $('#update-playlist').click(function() {
                 $.getJSON('index.php?get_playlist', function(data) {
@@ -160,7 +189,7 @@ if (isset($_GET['get_playlist'])) {
                                 <div class="card">
                                     <img src="${item.img}" alt="${item.title}" class="card-img-top background">
                                     <div class="card-body cover-layer">
-                                        <h6 class="card-title">${item.title} <small>${convertSecondsToHHMMSS(item.duration)} | ${item.date}</small></h6>
+                                        <h6 class="card-title">${item.title} <small><span class="time_duration">длительность ${convertSecondsToHHMMSS(item.duration)}</span> | <span class="time_start">время ${item.date}</span></small></h6>
                                         <p class="card-text">${item.text}</p>
                                         <button class="play btn btn-info" data-src="${item.mp3}">▶️</button>
                                         <a href="${item.url}" class="btn btn-primary">🔗</a>
@@ -178,11 +207,16 @@ if (isset($_GET['get_playlist'])) {
                         if ($('#global-audio')[0].paused === false) {
                             $('#global-audio')[0].pause();
                             $('#global-audio')[0].currentTime = 0;
+                            //$('#global-audio')[0].playbackRate = playbackRate;
+                            //$('#global-audio')[0].volume = volume;
                         }
 
                         // Установить новый трек
                         $('#global-audio').attr('src', trackUrl)[0].load();
                         $('#global-audio')[0].play();
+                        $('#global-audio')[0].playbackRate = playbackRate;
+                        $('#global-audio')[0].volume = volume;
+
 
                         // Обновить текст кнопки
                         $('.play').text('▶️');
@@ -196,6 +230,10 @@ if (isset($_GET['get_playlist'])) {
                 $('.play').text('▶️');
                 currentTrack = null;
                 $('#audio-player').addClass('hidden');
+
+                // Сохраняем скорость и громкость текущего трека перед переключением
+                playbackRate = $('#global-audio')[0].playbackRate;
+                volume = $('#global-audio')[0].volume;
             });
 
             $('#global-audio')[0].addEventListener('error', function(event) {
@@ -204,12 +242,12 @@ if (isset($_GET['get_playlist'])) {
 
             // Обработка слайдеров для скорости и громкости
             $('#speed-slider').on('input', function() {
-                const speed = parseFloat($(this).val());
-                $('#global-audio')[0].playbackRate = speed;
+                playbackRate = parseFloat($(this).val());
+                $('#global-audio')[0].playbackRate = playbackRate;
             });
 
             $('#volume-slider').on('input', function() {
-                const volume = parseFloat($(this).val());
+                volume = parseFloat($(this).val());
                 $('#global-audio')[0].volume = volume;
             });
         });

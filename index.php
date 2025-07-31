@@ -69,14 +69,20 @@ if (isset($_GET['get_playlist'])) {
         }
         .card {
             background-color: #ccc;
+            border-radius: 0 .25rem 0 0.3rem;
         }
         .card:hover .background {
             filter: blur(5px);
             opacity: 0.3;
         }
         .card img { width: 100%; height: auto; }
-        .card-title { margin-bottom: 2rem; }
-        .card-title small { float: right; clear: both; }
+        .card-title { margin: -11px 0 2rem 0;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0%,rgba(255,255,255,0.3) 80%,rgba(255,255,255,0) 100%);
+            padding: 0 5px 2px;
+            border-top: 1px solid silver;
+            border-radius: 0 0 5px 10px;
+        }
+        .card-title small { float: right; clear: both; text-shadow: none !important; }
         .time_duration,
         .time_start { font-family: Georgia, Times, "Times New Roman", serif}
         .time_start { font-weight: bold; }
@@ -90,9 +96,38 @@ if (isset($_GET['get_playlist'])) {
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);*/
         }
         .card-text {
-            max-height: 175px;
+            min-height: 175px;
+            /*max-height: 180px;*/
             overflow: auto;
             clear: both;
+            color: rgba(1, 1, 1, 0.3);
+        }
+        .card:hover .card-text {
+            color: #333;
+        }
+        .upper-footer {
+            min-height: 35px;
+            max-height: 35px;
+            overflow: hidden;
+            clear: both;
+        }
+        @media (min-width: 520px) {
+            .upper-footer {
+                margin-top: auto !important;
+                padding: 5px 10px;
+            }
+        }
+        @media (min-width: 450px) {
+            .upper-footer {
+                margin-top: -20px !important;
+                padding: 3px 10px;
+            }
+        }
+        @media (min-width: 470px) {
+            .upper-footer {
+                margin-top: -16px !important;
+                padding: 3px 10px;
+            }
         }
         audio {
             width: 90%;
@@ -185,15 +220,18 @@ if (isset($_GET['get_playlist'])) {
                     let html = '';
                     data.items.forEach(item => {
                         html += `
-                            <div class="col-md-6 col-sm-12 mb-4">
+                            <div class="col-xs-12 col-md-6  col-md-12 col-lg-6 col-xl-6 mb-4">
                                 <div class="card">
                                     <img src="${item.img}" alt="${item.title}" class="card-img-top background">
-                                    <div class="card-body cover-layer">
+                                    <div class="card-body cover-layer d-flex flex-column">
                                         <h6 class="card-title">${item.title} <small><span class="time_duration">длительность ${convertSecondsToHHMMSS(item.duration)}</span> | <span class="time_start">время ${item.date}</span></small></h6>
                                         <p class="card-text">${item.text}</p>
+                                        <div class="card-footer upper-footer">
                                         <button class="play btn btn-info" data-src="${item.mp3}">▶️</button>
                                         <a href="${item.url}" class="btn btn-primary">🔗</a>
+                                        </div>
                                     </div>
+
                                 </div>
                             </div>
                         `;

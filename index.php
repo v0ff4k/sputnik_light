@@ -1,4 +1,6 @@
 <?php
+
+$ua = 'Mozilla/5.0 (compatible; RS-Proxy/1.0)';
 if (isset($_GET['get_demo_playlist'])) {
     $a = '{"items": [
         {"id": "68862011", "title": "Прямой эфир", "text": "Прямой эфир", "img": "", "mp3": "https://nfw.ria.ru/flv/audio.aspx?ID=68862011&type=mp3", "duration": "", "date": "", "url": "", "articleid": ""},
@@ -11,7 +13,7 @@ if (isset($_GET['get_demo_playlist'])) {
 }
 if (isset($_GET['get_playlist'])) {
     $url = 'https://radiosputnik.ru/broadcasts/live/';
-    $context = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 60, 'header' => "User-Agent: App\r\n"]]);
+    $context = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 60, 'header' => "User-Agent: ".$ua."\r\n"]]);
     try {
         $r = file_get_contents($url, false, $context);
         $i = 'var playlist = {';
@@ -19,6 +21,8 @@ if (isset($_GET['get_playlist'])) {
         $e = strrpos($r, '</script><h1>');
         $data = substr($r, $s, $e - $s);
         $data = preg_replace('/}\s*,\s*]\s*}/', '}]}', $data);
+        $data = str_replace('\ ', ' ', $data);// some bad stuff.
+        $data = str_replace('1\\', '1\\\\', $data);// some bad stuff.
         header('Content-Type: application/json');
         echo '{'.$data;
         die();
@@ -26,6 +30,136 @@ if (isset($_GET['get_playlist'])) {
         echo $ex->getMessage();
         die('0');
     }
+}
+// Stream proxy with Range support to bypass mobile/cors/referrer restrictions
+if (isset($_GET['stream']) || isset($_GET['s'])) {
+    $sourceUrl = isset($_GET['s']) ? $_GET['s'] : $_GET['stream'];
+    if (isset($_GET['s'])) {
+        // base64url decode
+        $b64 = strtr($sourceUrl, '-_', '+/');
+        $pad = strlen($b64) % 4;
+        if ($pad) { $b64 .= str_repeat('=', 4 - $pad); }
+        $decodedUrl = base64_decode($b64, true);
+    } else {
+        $decodedUrl = urldecode($sourceUrl);
+    }
+    $parts = parse_url($decodedUrl);
+
+    // Basic SSRF protection and allowlist
+    $allowedHosts = ['nfw.ria.ru'];
+    if (!$parts || !isset($parts['scheme']) || !in_array($parts['scheme'], ['http', 'https'], true)) {
+        http_response_code(400);
+        die('Bad URL');
+    }
+    if (!isset($parts['host']) || !in_array($parts['host'], $allowedHosts, true)) {
+        http_response_code(403);
+        die('Forbidden host');
+    }
+
+    $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? $_SERVER['HTTP_RANGE'] : null;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $decodedUrl);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+        curl_setopt($ch, CURLOPT_HEADER, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 0);
+        curl_setopt($ch, CURLOPT_USERAGENT, $ua);
+
+        $forwardHeaders = [
+            'Accept: */*',
+        ];
+        if ($rangeHeader) {
+            $forwardHeaders[] = 'Range: ' . $rangeHeader;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $forwardHeaders);
+
+        $headersSent = false;
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($curl, $headerLine) use (&$headersSent) {
+            $len = strlen($headerLine);
+            $line = trim($headerLine);
+            if ($line === '') { return $len; }
+            $lower = strtolower($line);
+            if (strpos($lower, 'http/') === 0) {
+                if (preg_match('~\s(\d{3})\s~', $line, $m)) {
+                    http_response_code((int)$m[1]);
+                }
+                // defaults
+                header('Content-Type: audio/mpeg');
+                header('Accept-Ranges: bytes');
+            } elseif (
+                strpos($lower, 'content-type:') === 0 ||
+                strpos($lower, 'content-length:') === 0 ||
+                strpos($lower, 'content-range:') === 0 ||
+                strpos($lower, 'accept-ranges:') === 0 ||
+                strpos($lower, 'cache-control:') === 0 ||
+                strpos($lower, 'expires:') === 0 ||
+                strpos($lower, 'etag:') === 0
+            ) {
+                header($line, true);
+            }
+            return $len;
+        });
+
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($curl, $data) use (&$headersSent) {
+            echo $data;
+            flush();
+            return strlen($data);
+        });
+
+        curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+        curl_exec($ch);
+        curl_close($ch);
+        die();
+    }
+
+    // Fallback without cURL: stream via fopen with Range
+    $headers = [
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 60,
+            'header' => "User-Agent: RS-Proxy/1.0\r\nAccept: */*\r\n" . ($rangeHeader ? "Range: $rangeHeader\r\n" : ''),
+        ],
+    ];
+    $ctx = stream_context_create($headers);
+    $fp = @fopen($decodedUrl, 'rb', false, $ctx);
+    if (!$fp) {
+        http_response_code(502);
+        die('Bad Gateway');
+    }
+    // Try to read response headers from $http_response_header
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $hline) {
+            $lower = strtolower($hline);
+            if (strpos($lower, 'http/') === 0) {
+                if (preg_match('~\s(\d{3})\s~', $hline, $m)) {
+                    http_response_code((int)$m[1]);
+                }
+            }
+            if (
+                strpos($lower, 'content-type:') === 0 ||
+                strpos($lower, 'content-length:') === 0 ||
+                strpos($lower, 'content-range:') === 0 ||
+                strpos($lower, 'accept-ranges:') === 0 ||
+                strpos($lower, 'cache-control:') === 0 ||
+                strpos($lower, 'expires:') === 0 ||
+                strpos($lower, 'etag:') === 0
+            ) {
+                header($hline, true);
+            }
+        }
+    }
+    header('Content-Type: audio/mpeg');
+    header('Accept-Ranges: bytes');
+    while (!feof($fp)) {
+        $buf = fread($fp, 8192);
+        echo $buf;
+        flush();
+    }
+    fclose($fp);
+    die();
 }
 ?>
 <!DOCTYPE html>
@@ -203,7 +337,7 @@ if (isset($_GET['get_playlist'])) {
             <label for="volume-slider">Громкость:</label>
             <input type="range" id="volume-slider" min="0" max="1.3" step="0.1" value="0.3">
         </div>
-        <audio id="global-audio" src="" controls preload="none"></audio>
+        <audio id="global-audio" src="" controls preload="none" playsinline webkit-playsinline x5-playsinline></audio>
     </div>
     <script src="//code.jquery.com/jquery-3.5.1.min.js"></script>
     <script>
@@ -212,13 +346,19 @@ if (isset($_GET['get_playlist'])) {
             let playbackRate = 1;
             let volume = 0.3;
 
-            // set default val
-            document.getElementsByTagName("audio").volume = volume;
+            // инициализация громкости только для конкретного элемента
+            const audioEl = document.getElementById('global-audio');
+            audioEl.volume = volume;
+            audioEl.preload = 'none';
 
             $('#update-playlist').click(function() {
                 $.getJSON('index.php?get_playlist', function(data) {
                     let html = '';
+                    function b64url(u){
+                        return btoa(u).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+                    }
                     data.items.forEach(item => {
+                        const src = `index.php?s=${b64url(item.mp3)}`;
                         html += `
                             <div class="col-xs-12 col-md-6  col-md-12 col-lg-6 col-xl-6 mb-4">
                                 <div class="card">
@@ -227,7 +367,7 @@ if (isset($_GET['get_playlist'])) {
                                         <h6 class="card-title">${item.title} <small><span class="time_duration">длительность ${convertSecondsToHHMMSS(item.duration)}</span> | <span class="time_start">время ${item.date}</span></small></h6>
                                         <p class="card-text">${item.text}</p>
                                         <div class="card-footer upper-footer">
-                                        <button class="play btn btn-info" data-src="${item.mp3}">▶️</button>
+                                        <button class="play btn btn-info" data-src="${src}">▶️</button>
                                         <a href="${item.url}" class="btn btn-primary">🔗</a>
                                         </div>
                                     </div>
@@ -250,10 +390,15 @@ if (isset($_GET['get_playlist'])) {
                         }
 
                         // Установить новый трек
-                        $('#global-audio').attr('src', trackUrl)[0].load();
-                        $('#global-audio')[0].play();
-                        $('#global-audio')[0].playbackRate = playbackRate;
-                        $('#global-audio')[0].volume = volume;
+                        audioEl.src = trackUrl;
+                        audioEl.load();
+                        // В мобильных браузерах автоплей возможен только после явного user gesture
+                        audioEl.playbackRate = playbackRate;
+                        audioEl.volume = volume;
+                        const playPromise = audioEl.play();
+                        if (playPromise !== undefined) {
+                            playPromise.catch(() => {/* ignore, UI already requires gesture */});
+                        }
 
 
                         // Обновить текст кнопки
@@ -264,29 +409,29 @@ if (isset($_GET['get_playlist'])) {
                 });
             });
 
-            $('#global-audio')[0].addEventListener('ended', function() {
+            audioEl.addEventListener('ended', function() {
                 $('.play').text('▶️');
                 currentTrack = null;
                 $('#audio-player').addClass('hidden');
 
                 // Сохраняем скорость и громкость текущего трека перед переключением
-                playbackRate = $('#global-audio')[0].playbackRate;
-                volume = $('#global-audio')[0].volume;
+                playbackRate = audioEl.playbackRate;
+                volume = audioEl.volume;
             });
 
-            $('#global-audio')[0].addEventListener('error', function(event) {
+            audioEl.addEventListener('error', function(event) {
                 alert('Ошибка при воспроизведении аудиофайла.');
             });
 
             // Обработка слайдеров для скорости и громкости
             $('#speed-slider').on('input', function() {
                 playbackRate = parseFloat($(this).val());
-                $('#global-audio')[0].playbackRate = playbackRate;
+                audioEl.playbackRate = playbackRate;
             });
 
             $('#volume-slider').on('input', function() {
                 volume = parseFloat($(this).val());
-                $('#global-audio')[0].volume = volume;
+                audioEl.volume = volume;
             });
         });
 

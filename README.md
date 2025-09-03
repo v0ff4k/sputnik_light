@@ -4,9 +4,10 @@ Light radio player instead hard weight oficial site player. Uses php 7+  js and 
 Hello and welcome to light version of radio sputnik, where scripts loads your  CPU and RAM via browser.
 Here  you can load and play records stored in links in native html5 player.
 Uses standart version of jquery and bootstrap.
+Worked for all browsers(if not, add pull reqest), and in mobile as audio proxy for mixed content.
 
 # TODO
-1. add android support, use powerful  howler.js maybe.
+1. add  howler.js (maybe).
 
 # updates
 If you think that something is missed here, feel free to post updates.

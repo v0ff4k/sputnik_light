@@ -21,8 +21,9 @@ if (isset($_GET['get_playlist'])) {
         $e = strrpos($r, '</script><h1>');
         $data = substr($r, $s, $e - $s);
         $data = preg_replace('/}\s*,\s*]\s*}/', '}]}', $data);
-        $data = str_replace('\ ', ' ', $data);// some bad stuff.
-        $data = str_replace('1\\', '1\\\\', $data);// some bad stuff.
+        //$data = str_replace('\ ', ' ', $data);// some bad stuff.
+        $data = preg_replace('/\\\([а-яa-mo-qu-z0-9 ])/ui', '$1', $data);// \bad \5tu\ff NOT \n\s\t\r
+        //$data = str_replace('1\\', '1\\\\', $data);// some bad stuff.
         header('Content-Type: application/json');
         echo '{'.$data;
         die();

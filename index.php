@@ -21,10 +21,10 @@ if (isset($_GET['get_playlist'])) {
         $e = strrpos($r, '</script><h1>');
         $data = substr($r, $s, $e - $s);
         $data = preg_replace('/}\s*,\s*]\s*}/', '}]}', $data);
-        //$data = str_replace('\ ', ' ', $data);// some bad stuff.
-        $data = preg_replace('/\\\([а-яa-mo-qu-z0-9 ])/ui', '$1', $data);// \bad \5tu\ff NOT \n\s\t\r
+        $data = str_replace('\ ', ' ', $data);// some bad stuff.
+        $data = preg_replace('/\\\([а-яa-mo-qu-z0-9])/ui', '$1', $data);// \bad \5tu\ff NOT \n\s\t\r
         //$data = str_replace('1\\', '1\\\\', $data);// some bad stuff.
-        header('Content-Type: application/json');
+         header('Content-Type: application/json');
         echo '{'.$data;
         die();
     } catch (\Exception $ex) {
@@ -32,6 +32,7 @@ if (isset($_GET['get_playlist'])) {
         die('0');
     }
 }
+
 // Stream proxy with Range support to bypass mobile/cors/referrer restrictions
 if (isset($_GET['stream']) || isset($_GET['s'])) {
     $sourceUrl = isset($_GET['s']) ? $_GET['s'] : $_GET['stream'];
@@ -205,6 +206,7 @@ if (isset($_GET['stream']) || isset($_GET['s'])) {
         .card {
             background-color: #ccc;
             border-radius: 0 .25rem 0 0.3rem;
+            min-height: 265px;
         }
         .card:hover .background {
             filter: blur(5px);
@@ -359,7 +361,15 @@ if (isset($_GET['stream']) || isset($_GET['s'])) {
                         return btoa(u).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
                     }
                     data.items.forEach(item => {
-                        const src = `index.php?s=${b64url(item.mp3)}`;
+                        //const src = `index.php?s=${b64url(item.mp3)}`;
+                        let src;
+                        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                            // mobile device
+                            src = `index.php?s=${b64url(item.mp3)}`;
+                        } else {// desktop
+                            src = item.mp3;
+                        }
+
                         html += `
                             <div class="col-xs-12 col-md-6  col-md-12 col-lg-6 col-xl-6 mb-4">
                                 <div class="card">
